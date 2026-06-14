@@ -1,25 +1,24 @@
 # ha-stats-lake
 
-Long-term storage for Home Assistant sensor data — no extra server required.
+Long-term storage for Home Assistant sensor data — packaged as a native
+Home Assistant add-on, no extra server required.
 
-An AppDaemon app running inside Home Assistant samples a list of entities
-every 30 minutes, appends them to flat per-entity monthly CSV files, and
-nightly:
+The add-on samples a list of entities every 30 minutes, appends them to flat
+per-entity monthly CSV files, and nightly:
 
 - consolidates new rows into a [DuckLake](https://ducklake.select/) (Parquet
   on object storage) hosted on **Cloudflare R2**
-- syncs the raw CSVs to **OneDrive** via `rclone` as a cold backup
+- syncs the raw CSVs to any `rclone` compatible destination as a cold backup
 
 Visualization happens later, on demand, using the
 [DuckDB UI extension](https://duckdb.org/docs/extensions/ui) pointed directly
 at R2 — no dashboard server to maintain.
 
 ```
-Home Assistant
-  └─ AppDaemon (ha_stats app)
-       ├─ every 30 min  → sample tracked entities → CSV (local)
-       ├─ nightly        → consolidate CSV → DuckLake (Parquet) on R2
-       └─ nightly        → rclone sync CSV → OneDrive (cold backup)
+Home Assistant (ha_stats_lake add-on)
+  ├─ every 30 min  → sample tracked entities → CSV (/data/ha_stats_data/)
+  ├─ nightly        → consolidate CSV → DuckLake (Parquet) on R2
+  └─ nightly        → rclone sync CSV → OneDrive (cold backup)
 
 Your laptop (on demand)
   └─ duckdb -ui  → query the DuckLake on R2 directly
@@ -37,76 +36,40 @@ Your laptop (on demand)
 - **Config lives in the HA UI** — which entities to track is a single
   **Group helper**. Add or remove members in
   `Settings → Helpers`, no YAML edits, no restarts.
-- **No extra infrastructure** — everything runs inside your existing HA
-  instance via AppDaemon. R2 and OneDrive are optional; both can be disabled.
+- **Native add-on** — runs in its own supervised Docker container; no
+  AppDaemon dependency.
 
 ## Repository layout
 
 ```
-apps/
-  ha_stats/
-    ha_stats.py        # the AppDaemon app
-  apps.yaml.example     # example app configuration — copy to apps.yaml
-  requirements.txt       # python packages AppDaemon needs to install
+ha_stats/
+  config.yaml           ← HA add-on manifest + options schema
+  Dockerfile            ← multi-stage Alpine build
+  run.sh                ← container entrypoint
+  ha_stats.py           ← asyncio app
+  requirements.txt
+
+.github/workflows/
+  ci.yaml               ← lint + build on every PR
+  publish-docker.yaml   ← publish to GHCR on release tags
 ```
-
-## Prerequisites
-
-- Home Assistant with the **AppDaemon** add-on installed
-  (`Settings → Add-ons → Add-on store → AppDaemon 4`)
-- (optional) A **Cloudflare R2** bucket, if you want a queryable Parquet
-  lakehouse
-- (optional) An **rclone** remote configured for OneDrive, if you want cold
-  backups of the raw CSVs
 
 ---
 
-## 1. Install the AppDaemon app
+## 1. Add this repository to Home Assistant
 
-1. Enable the **Samba share** or **SSH/Terminal** add-on so you can reach
-   `/addon_configs/a0d7b954_appdaemon/` (path may vary slightly by AppDaemon
-   add-on version — check the add-on's "Config" tab for its config path).
-
-2. Copy `apps/ha_stats/ha_stats.py` into the AppDaemon `apps/` directory:
-
-   ```
-   /addon_configs/a0d7b954_appdaemon/apps/ha_stats/ha_stats.py
-   ```
-
-3. Copy `apps/apps.yaml.example` to
-   `/addon_configs/a0d7b954_appdaemon/apps/apps.yaml` (or append its content
-   to your existing `apps.yaml`) and adjust the values — see configuration
-   below.
-
-4. Add `duckdb` to the AppDaemon add-on's Python packages. In the AppDaemon
-   add-on configuration (Settings tab of the add-on), add:
-
-   ```yaml
-   python_packages:
-     - duckdb
-   ```
-
-   If you don't plan to use R2/DuckLake, you can skip this and leave
-   `r2_bucket` empty in `apps.yaml` — consolidation will simply be skipped.
-
-5. If you want OneDrive backup, `rclone` needs to be available inside the
-   AppDaemon container. The simplest route is a custom AppDaemon Docker
-   image with `rclone` installed, or skip this feature (leave
-   `onedrive_remote` empty) and rely on R2/DuckLake as your backup, which is
-   versioned by design.
-
-6. Restart the AppDaemon add-on. Check its log for:
-
-   ```
-   ha_stats initialized: csv_dir=/conf/ha_stats_data, group=group.ha_stats_tracked_entities, interval=1800s
-   ```
+1. Go to **Settings → Add-ons → Add-on store**.
+2. Click the three-dot menu (⋮) → **Repositories**.
+3. Add the URL of this repo and click **Add**.
+4. The **HA Stats Lake** add-on will appear in the store.
+5. Click **Install**.
 
 ---
 
 ## 2. Create the entity group helper
 
-This is the **only configuration step you'll repeat** when adding or
-removing tracked sensors — done entirely in the HA UI.
+This is the **only step you'll repeat** when adding or removing tracked
+sensors — done entirely in the HA UI.
 
 1. Go to `Settings → Devices & services → Helpers`
 2. Click **+ Create helper → Group**
@@ -122,8 +85,7 @@ removing tracked sensors — done entirely in the HA UI.
 6. Save
 
 To add or remove a tracked entity later, just edit this group's member list.
-No restart needed — the app re-reads it on every sample (every 30 minutes
-by default).
+No restart needed — the app re-reads it on every sample.
 
 ### How type/unit/label are determined
 
@@ -140,68 +102,70 @@ Storage key is the entity_id with `.` replaced by `_`
 
 ---
 
-## 3. Configure `apps.yaml`
+## 3. Configure the add-on
 
-Edit the copy of `apps.yaml.example`:
+In the add-on's **Configuration** tab, set:
 
-```yaml
-ha_stats:
-  module: ha_stats
-  class: HaStats
-  csv_dir: /conf/ha_stats_data
-  group_entity: group.ha_stats_tracked_entities
-  sample_interval_seconds: 1800
-  consolidate_time: "02:00:00"
-  onedrive_sync_time: "03:00:00"
+| Option | Description | Default |
+|--------|-------------|---------|
+| `group_entity` | Entity ID of the Group helper | `group.ha_stats_tracked_entities` |
+| `sample_interval_seconds` | How often to sample | `1800` |
+| `consolidate_time` | When to run nightly DuckLake consolidation | `02:00:00` |
+| `onedrive_sync_time` | When to run nightly rclone sync | `03:00:00` |
+| `r2_bucket` | S3 URI of the R2 bucket (empty = disable) | — |
+| `r2_endpoint` | R2 endpoint URL | — |
+| `r2_key_id` | R2 Access Key ID | — |
+| `r2_secret` | R2 Secret Access Key | — |
+| `onedrive_remote` | rclone remote path (empty = disable) | — |
 
-  # Leave empty to disable R2/DuckLake consolidation
-  r2_bucket: "s3://ha-stats/lake/"
-  r2_endpoint: "https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com"
-  r2_key_id: "YOUR_R2_ACCESS_KEY_ID"
-  r2_secret: "YOUR_R2_SECRET_ACCESS_KEY"
-
-  # Leave empty to disable OneDrive backup
-  onedrive_remote: "onedrive:ha-backup"
-```
-
-`csv_dir` must point to a path writable by AppDaemon and persistent across
-restarts — `/conf/...` (the AppDaemon add-on's persistent config volume) is
-recommended.
+CSV data is stored in the add-on's persistent data volume at
+`/data/ha_stats_data/` — no manual path configuration needed.
 
 ---
 
 ## 4. (Optional) Cloudflare R2 setup
 
 1. Create a bucket, e.g. `ha-stats`, in the Cloudflare dashboard under **R2**.
-2. Create an API token with **read & write** access to that bucket, note the
+2. Create an API token with **read & write** access to that bucket. Note the
    Access Key ID, Secret Access Key, and your Account ID.
-3. Fill in `r2_bucket`, `r2_endpoint`, `r2_key_id`, `r2_secret` in
-   `apps.yaml` as shown above.
+3. Fill in `r2_bucket` (`s3://ha-stats/lake/`), `r2_endpoint`
+   (`https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com`), `r2_key_id`, and
+   `r2_secret` in the add-on configuration.
 
-The first nightly run creates the DuckLake catalog and table automatically —
-nothing to provision manually.
+The first nightly run creates the DuckLake catalog and table automatically.
 
 ---
 
 ## 5. (Optional) OneDrive backup via rclone
 
-1. On a machine with `rclone` installed, run `rclone config` and create a
-   remote named `onedrive` (or any name — update `onedrive_remote`
-   accordingly) following the
+1. On any machine with `rclone`, run `rclone config` and create a remote named
+   `onedrive` following the
    [rclone OneDrive guide](https://rclone.org/onedrive/).
-2. Copy the resulting `rclone.conf` into the AppDaemon container at the path
-   `rclone` expects (`~/.config/rclone/rclone.conf`), or mount it as part of
-   your AppDaemon add-on configuration.
-3. Set `onedrive_remote: "onedrive:ha-backup"` in `apps.yaml`.
-
-If `rclone` isn't available in your AppDaemon environment, leave this empty —
-everything else keeps working, R2 just becomes your only off-site copy.
+2. Copy the resulting `rclone.conf` into the add-on's `/data/` volume at
+   `/data/.config/rclone/rclone.conf`.
+3. Set `onedrive_remote: "onedrive:ha-backup"` in the add-on configuration.
 
 ---
 
-## 6. Visualizing the data
+## 6. Start the add-on
 
-No dashboard to host. On any machine with DuckDB installed:
+Click **Start**. In the **Log** tab, look for:
+
+```
+ha_stats starting: csv_dir=/data/ha_stats_data, group=group.ha_stats_tracked_entities, interval=1800s
+```
+
+Thirty minutes later you should see:
+
+```
+sampled N entities
+```
+
+---
+
+## 7. Visualizing the data
+
+On any machine with DuckDB installed:
 
 ```bash
 duckdb -ui
@@ -249,20 +213,17 @@ WHERE entity = 'sensor_energy_total'
 GROUP BY 1 ORDER BY 1;
 ```
 
-The DuckDB UI lets you turn any query result into a chart directly in the
-browser.
-
 ---
 
 ## Troubleshooting
 
-- **No data appearing** — check the AppDaemon log for `ha_stats initialized`
-  and `sampled N entities` lines. If `N` is 0, verify the group helper exists
-  and has members.
+- **No data appearing** — check the add-on log for `sampled N entities`. If
+  `N` is 0, verify the group helper exists and has members.
 - **Consolidation errors** — usually R2 credentials or bucket path. Test the
   `ATTACH` statement manually in a local `duckdb` shell first.
-- **rclone errors** — verify `rclone listremotes` works inside the AppDaemon
-  container and the remote name matches `onedrive_remote`.
+- **rclone errors** — verify `rclone.conf` is present at
+  `/data/.config/rclone/rclone.conf` inside the add-on container and the
+  remote name matches `onedrive_remote`.
 
 ## License
 
