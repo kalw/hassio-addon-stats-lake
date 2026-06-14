@@ -1,0 +1,16 @@
+---
+name: Deploy Edge
+
+# yamllint disable-line rule:truthy
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  workflows:
+    uses: hassio-addons/workflows/.github/workflows/addon-deploy.yaml@main
+    with:
+      repository: "hassio-addons-edge"
+    secrets:
+      DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
