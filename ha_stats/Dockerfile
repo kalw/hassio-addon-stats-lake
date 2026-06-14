@@ -5,8 +5,10 @@ FROM ${BUILD_FROM}
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Install rclone and Python dependencies
-RUN apk add --no-cache rclone \
-    && pip3 install --no-cache-dir aiohttp duckdb
+# hadolint ignore=DL3018
+RUN apk add --no-cache rclone
+COPY requirements.txt /tmp/requirements.txt
+RUN pip3 install --no-cache-dir --requirement /tmp/requirements.txt
 
 COPY ha_stats.py /app/ha_stats.py
 COPY rootfs /
