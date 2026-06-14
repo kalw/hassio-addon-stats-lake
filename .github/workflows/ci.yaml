@@ -1,26 +1,16 @@
+---
 name: CI
 
+# yamllint disable-line rule:truthy
 on:
   push:
-    branches: [main]
   pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+  workflow_dispatch:
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - run: uv run ruff check ha_stats/
-
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
-        with:
-          context: ha_stats
-          push: false
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+  workflows:
+    uses: hassio-addons/workflows/.github/workflows/addon-ci.yaml@main

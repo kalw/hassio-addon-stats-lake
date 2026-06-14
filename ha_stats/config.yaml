@@ -6,9 +6,9 @@ description: >-
   rclone.
 version: "0.1.0"
 slug: ha_stats_lake
-url: https://github.com/rdespres/ha-stats-lake
+url: https://github.com/kalw/ha-stats-lake
 
-image: ghcr.io/kalw/ha-stats-lake/ha-stats
+image: ghcr.io/kalw/ha_stats_lake/{arch}
 
 homeassistant_api: true
 
