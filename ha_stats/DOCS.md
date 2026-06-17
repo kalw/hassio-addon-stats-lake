@@ -51,17 +51,17 @@ Storage key is the entity*id with `.` replaced by `*`(e.g.`sensor.power_consumpt
 
 ## Configuration
 
-| Option                    | Description                                           | Default          |
-| ------------------------- | ----------------------------------------------------- | ---------------- |
+| Option                    | Description                                           | Default            |
+| ------------------------- | ----------------------------------------------------- | ------------------ |
 | `tracked_entities`        | List of HA entity IDs to sample                       | `[sensor.example]` |
-| `sample_interval_seconds` | How often to sample (seconds)                         | `1800`           |
-| `consolidate_time`        | When to run nightly DuckLake consolidation (HH:MM:SS) | `02:00:00`                        |
-| `rclone_sync_time`        | When to run nightly rclone sync (HH:MM:SS)            | `03:00:00`                        |
-| `s3_bucket`               | S3 URI of the bucket (empty = disable consolidation)  | —                                 |
-| `s3_endpoint`             | S3-compatible endpoint URL                            | —                                 |
-| `s3_key_id`               | S3 Access Key ID                                      | —                                 |
-| `s3_secret`               | S3 Secret Access Key                                  | —                                 |
-| `rclone_remote`           | rclone remote path (empty = disable sync)             | —                                 |
+| `sample_interval_seconds` | How often to sample (seconds)                         | `1800`             |
+| `consolidate_time`        | When to run nightly DuckLake consolidation (HH:MM:SS) | `02:00:00`         |
+| `rclone_sync_time`        | When to run nightly rclone sync (HH:MM:SS)            | `03:00:00`         |
+| `s3_bucket`               | S3 URI of the bucket (empty = disable consolidation)  | —                  |
+| `s3_endpoint`             | S3-compatible endpoint URL                            | —                  |
+| `s3_key_id`               | S3 Access Key ID                                      | —                  |
+| `s3_secret`               | S3 Secret Access Key                                  | —                  |
+| `rclone_remote`           | rclone remote path (empty = disable sync)             | —                  |
 
 CSV data is persisted to `/data/ha_stats_data/` inside the add-on's data volume.
 
