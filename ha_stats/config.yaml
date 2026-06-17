@@ -39,6 +39,6 @@ schema:
   rclone_sync_time: str
   s3_bucket: str
   s3_endpoint: str
-  s3_key_id: str
-  s3_secret: str
+  s3_key_id: password
+  s3_secret: password
   rclone_remote: str
