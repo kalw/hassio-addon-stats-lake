@@ -33,7 +33,8 @@ options:
 
 schema:
   tracked_entities:
-    - str
+    - selector:
+        entity: {}
   sample_interval_seconds: int
   consolidate_time: str
   rclone_sync_time: str
