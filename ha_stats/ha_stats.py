@@ -38,6 +38,7 @@ _ENV_MAP = {
     "HA_STATS_SAMPLE_INTERVAL": "sample_interval_seconds",
     "HA_STATS_CONSOLIDATE_TIME": "consolidate_time",
     "HA_STATS_RCLONE_SYNC_TIME": "rclone_sync_time",
+    "HA_STATS_CSV_RETENTION_DAYS": "csv_retention_days",
     # comma-separated list: HA_STATS_TRACKED_ENTITIES=sensor.a,sensor.b
     "HA_STATS_TRACKED_ENTITIES": "tracked_entities",
 }
@@ -56,6 +57,26 @@ def load_config(path: Path | None = None) -> dict:
         else:
             cfg[cfg_key] = val
     return cfg
+
+
+def _normalise_bucket(bucket: str) -> str:
+    """Normalise s3_bucket to a trailing-slash S3 URI."""
+    bucket = bucket.strip()
+    if not bucket.startswith("s3://"):
+        bucket = f"s3://{bucket}/"
+    if not bucket.endswith("/"):
+        bucket += "/"
+    return bucket
+
+
+def _entity_type(entity_id: str, attributes: dict) -> str:
+    """Classify an HA entity as binary / counter / gauge."""
+    domain = entity_id.split(".")[0]
+    if domain in ("binary_sensor", "switch", "input_boolean"):
+        return "binary"
+    if attributes.get("state_class") in ("total", "total_increasing"):
+        return "counter"
+    return "gauge"
 
 
 class HaStats:
@@ -97,20 +118,10 @@ class HaStats:
                 continue
 
             a = state.get("attributes", {})
-            domain = entity_id.split(".")[0]
-            state_class = a.get("state_class", "")
-
-            if domain in ("binary_sensor", "switch", "input_boolean"):
-                etype = "binary"
-            elif state_class in ("total", "total_increasing"):
-                etype = "counter"
-            else:
-                etype = "gauge"
-
             result.append({
                 "key": entity_id.replace(".", "_"),
                 "ha_entity": entity_id,
-                "type": etype,
+                "type": _entity_type(entity_id, a),
                 "unit": a.get("unit_of_measurement", ""),
                 "label": a.get("friendly_name", entity_id),
             })
@@ -166,49 +177,74 @@ class HaStats:
             return
 
         cfg = self.cfg
+        bucket = _normalise_bucket(cfg["s3_bucket"])
         # Strip https:// from endpoint — DuckDB expects bare hostname
         endpoint = cfg["s3_endpoint"].replace("https://", "").replace("http://", "")
-        sql = f"""
-INSTALL ducklake;
-LOAD ducklake;
-
-CREATE OR REPLACE SECRET s3_store (
-    TYPE S3,
-    KEY_ID     '{cfg["s3_key_id"]}',
-    SECRET     '{cfg["s3_secret"]}',
-    ENDPOINT   '{endpoint}',
-    REGION     'auto'
-);
-
-ATTACH IF NOT EXISTS 'ducklake:{cfg["s3_bucket"]}catalog.duckdb' AS lake (
-    DATA_PATH '{cfg["s3_bucket"]}data/'
-);
-
-CREATE TABLE IF NOT EXISTS lake.stats (
-    entity  VARCHAR,
-    ts      TIMESTAMPTZ,
-    value   DOUBLE
-);
-
-INSERT INTO lake.stats
-SELECT
-    regexp_extract(filename, '.*/([^/]+)/\\d{{4}}-\\d{{2}}\\.csv$', 1) AS entity,
-    ts::TIMESTAMPTZ AS ts,
-    value::DOUBLE   AS value
-FROM read_csv(
-    '{self.csv_dir}/*/*.csv',
-    columns = {{'ts': 'VARCHAR', 'value': 'VARCHAR'}},
-    filename = true
-)
-WHERE ts::TIMESTAMPTZ > (
-    SELECT coalesce(max(ts), '1970-01-01'::TIMESTAMPTZ) FROM lake.stats
-);
-"""
         try:
-            duckdb.execute(sql)
-            log.info("S3 / DuckLake consolidation done")
+            con = duckdb.connect()
+            con.execute("INSTALL ducklake")
+            con.execute("LOAD ducklake")
+            con.execute(f"""
+                CREATE OR REPLACE SECRET s3_store (
+                    TYPE S3,
+                    KEY_ID   '{cfg["s3_key_id"]}',
+                    SECRET   '{cfg["s3_secret"]}',
+                    ENDPOINT '{endpoint}',
+                    REGION   'auto'
+                )
+            """)
+            catalog = self.csv_dir / "catalog.duckdb"
+            con.execute(f"""
+                ATTACH IF NOT EXISTS 'ducklake:{catalog}' AS lake (
+                    DATA_PATH '{bucket}data/'
+                )
+            """)
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS lake.stats (
+                    entity  VARCHAR,
+                    ts      TIMESTAMPTZ,
+                    value   DOUBLE
+                )
+            """)
+            con.execute(f"""
+                INSERT INTO lake.stats
+                SELECT
+                    regexp_extract(filename, '.*/([^/]+)/\\d{{4}}-\\d{{2}}\\.csv$', 1) AS entity,
+                    ts::TIMESTAMPTZ AS ts,
+                    value::DOUBLE   AS value
+                FROM read_csv(
+                    '{self.csv_dir}/*/*.csv',
+                    columns = {{'ts': 'VARCHAR', 'value': 'VARCHAR'}},
+                    filename = true
+                )
+                WHERE ts::TIMESTAMPTZ > (
+                    SELECT coalesce(max(ts), '1970-01-01'::TIMESTAMPTZ) FROM lake.stats
+                )
+            """)
+            con.execute("CHECKPOINT lake")
+            con.close()
+            log.info("S3 / DuckLake consolidation done → %s", bucket)
+            self._cleanup_old_csvs()
         except Exception as e:
             log.error("consolidation failed: %s", e)
+
+    def _cleanup_old_csvs(self) -> None:
+        retention = int(self.cfg.get("csv_retention_days", 90))
+        if retention == 0:
+            return
+        cutoff = datetime.date.today() - datetime.timedelta(days=retention)
+        cutoff_ym = (cutoff.year, cutoff.month)
+        removed = 0
+        for csv_file in self.csv_dir.glob("*/*.csv"):
+            try:
+                y, m = map(int, csv_file.stem.split("-"))
+            except ValueError:
+                continue
+            if (y, m) < cutoff_ym:
+                csv_file.unlink()
+                removed += 1
+        if removed:
+            log.info("removed %d CSV files older than %d days", removed, retention)
 
     # ── rclone sync → any remote (cold backup) ────────────────────────────
 
