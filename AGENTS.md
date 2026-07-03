@@ -186,7 +186,7 @@ Steps:
    git push origin v0.2.0
    ```
 5. `deploy.yaml` fires automatically on the published release:
-   - pushes the multi-arch image to GHCR (`ghcr.io/kalw/ha_stats_lake/<arch>:<version>`)
+   - pushes the multi-arch image to GHCR (`ghcr.io/kalw/hassio-addon-stats-lake/<arch>:<version>`)
    - dispatches an `update` event to `kalw/hassio-addons` via `DISPATCH_TOKEN`,
      triggering the `repository-updater` to refresh the add-on listing
 6. Reset `version` back to `"dev"` in `ha_stats/config.yaml`, commit and merge

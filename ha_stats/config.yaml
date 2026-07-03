@@ -9,7 +9,7 @@ version: "dev"
 slug: ha_stats_lake
 url: https://github.com/kalw/hassio-addon-stats-lake
 
-image: ghcr.io/kalw/ha_stats_lake/{arch}
+image: ghcr.io/kalw/hassio-addon-stats-lake/{arch}
 
 homeassistant_api: true
 
