@@ -184,13 +184,17 @@ class HaStats:
             con = duckdb.connect()
             con.execute("INSTALL ducklake")
             con.execute("LOAD ducklake")
+            # Use path-style URLs for custom endpoints (e.g. SeaweedFS, MinIO).
+            # AWS S3 uses virtual-hosted style by default; custom endpoints need path style.
+            url_style = "path" if endpoint else "vhost"
             con.execute(f"""
                 CREATE OR REPLACE SECRET s3_store (
                     TYPE S3,
-                    KEY_ID   '{cfg["s3_key_id"]}',
-                    SECRET   '{cfg["s3_secret"]}',
-                    ENDPOINT '{endpoint}',
-                    REGION   'auto'
+                    KEY_ID    '{cfg["s3_key_id"]}',
+                    SECRET    '{cfg["s3_secret"]}',
+                    ENDPOINT  '{endpoint}',
+                    REGION    'auto',
+                    URL_STYLE '{url_style}'
                 )
             """)
             catalog = self.csv_dir / "catalog.duckdb"
