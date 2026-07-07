@@ -178,19 +178,26 @@ class HaStats:
 
         cfg = self.cfg
         bucket = _normalise_bucket(cfg["s3_bucket"])
-        # Strip https:// from endpoint — DuckDB expects bare hostname
-        endpoint = cfg["s3_endpoint"].replace("https://", "").replace("http://", "")
+        raw_endpoint = cfg["s3_endpoint"].strip()
+        use_ssl = not raw_endpoint.startswith("http://")
+        # DuckDB expects a bare hostname[:port], no scheme
+        endpoint = raw_endpoint.replace("https://", "").replace("http://", "")
         try:
             con = duckdb.connect()
             con.execute("INSTALL ducklake")
             con.execute("LOAD ducklake")
+            # Path-style URLs required for custom endpoints (SeaweedFS, MinIO, etc.).
+            # AWS S3 uses virtual-hosted style; custom endpoints need path style.
+            url_style = "path" if endpoint else "vhost"
             con.execute(f"""
                 CREATE OR REPLACE SECRET s3_store (
                     TYPE S3,
-                    KEY_ID   '{cfg["s3_key_id"]}',
-                    SECRET   '{cfg["s3_secret"]}',
-                    ENDPOINT '{endpoint}',
-                    REGION   'auto'
+                    KEY_ID    '{cfg["s3_key_id"]}',
+                    SECRET    '{cfg["s3_secret"]}',
+                    ENDPOINT  '{endpoint}',
+                    REGION    'auto',
+                    URL_STYLE '{url_style}',
+                    USE_SSL   {'true' if use_ssl else 'false'}
                 )
             """)
             catalog = self.csv_dir / "catalog.duckdb"
