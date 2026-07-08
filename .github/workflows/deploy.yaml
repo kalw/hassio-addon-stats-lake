@@ -6,16 +6,18 @@ on:
   release:
     types:
       - published
-
-permissions:
-  contents: read
-  packages: write
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types:
+      - completed
 
 jobs:
   workflows:
-    # yamllint disable-line rule:line-length
-    uses: hassio-addons/workflows/.github/workflows/addon-deploy.yaml@383c10d83acbe341acbb35a4a61bfd14827f00f0
+    uses: hassio-addons/workflows/.github/workflows/addon-deploy.yaml@main
     with:
       repository: "hassio-addons"
+      repository_edge: "hassio-addons-edge"
+      repository_beta: "hassio-addons-beta"
     secrets:
       DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
