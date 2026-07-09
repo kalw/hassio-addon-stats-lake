@@ -23,6 +23,10 @@ monthly CSV files, then nightly:
 - syncs raw CSVs to any [rclone](https://rclone.org/) remote as a cold backup
   (OneDrive, Google Drive, SFTP, …)
 
+Pick which entities to track from a built-in **entity picker** (a web UI
+opened from the add-on or its sidebar panel) — no hand-editing YAML — or from
+the add-on Configuration tab.
+
 Visualization on demand via `duckdb -ui` pointed at your S3 store — no
 dashboard server to maintain.
 
@@ -75,11 +79,11 @@ If you are more interested in stable releases of our add-ons:
 [github-actions-shield]: {{ repo }}/workflows/CI/badge.svg
 [github-actions]: {{ repo }}/actions
 [commits]: {{ repo }}/commits/main
-[commits-shield]: https://img.shields.io/github/commit-activity/y/kalw/ha-stats-lake.svg
-[releases-shield]: https://img.shields.io/github/release/kalw/ha-stats-lake.svg
+[commits-shield]: https://img.shields.io/github/commit-activity/y/kalw/hassio-addon-stats-lake.svg
+[releases-shield]: https://img.shields.io/github/release/kalw/hassio-addon-stats-lake.svg
 [releases]: {{ repo }}/tree/{{ version }}
-[last-commit-shield]: https://img.shields.io/github/last-commit/kalw/ha-stats-lake.svg
-[license-shield]: https://img.shields.io/github/license/kalw/ha-stats-lake.svg
+[last-commit-shield]: https://img.shields.io/github/last-commit/kalw/hassio-addon-stats-lake.svg
+[license-shield]: https://img.shields.io/github/license/kalw/hassio-addon-stats-lake.svg
 [docs]: {{ repo }}/blob/main/ha_stats/DOCS.md
 
 {% if channel == "stable" %}

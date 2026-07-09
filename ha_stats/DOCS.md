@@ -5,7 +5,8 @@ monthly CSV files, then nightly consolidates into a DuckLake (Parquet) on any
 S3-compatible object store and optionally syncs raw CSVs to any rclone remote.
 
 ```
-Home Assistant (ha_stats_lake add-on)
+Home Assistant (hassio-addon-stats-lake add-on)
+  ├─ pick entities → entity picker UI → add-on config (tracked_entities)
   ├─ every 30 min  → sample tracked entities → CSV (/data/ha_stats_data/)
   ├─ nightly        → consolidate CSV → DuckLake (Parquet) on S3-compatible store
   └─ nightly        → rclone sync CSV → any rclone remote (cold backup)
