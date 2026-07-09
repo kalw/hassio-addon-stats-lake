@@ -12,6 +12,15 @@ url: https://github.com/kalw/hassio-addon-stats-lake
 image: ghcr.io/kalw/hassio-addon-stats-lake/{arch}
 
 homeassistant_api: true
+# hassio_api + manager role: the ingress UI writes the entity selection
+# back into this add-on's own options via POST /addons/self/options.
+hassio_api: true
+hassio_role: manager
+
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:chart-box-outline
+panel_title: Stats Lake
 
 arch:
   - aarch64
