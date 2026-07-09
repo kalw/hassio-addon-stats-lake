@@ -14,6 +14,7 @@ Requires in config.yaml:
   hassio_role: manager      # permission to write self options
 """
 
+import json
 import logging
 import os
 
@@ -35,11 +36,38 @@ _HEADERS = {"Authorization": f"Bearer {_TOKEN}"}
 
 # ── Supervisor / HA API helpers ───────────────────────────────────────────
 
+# Rendered server-side via the template API to resolve each entity's area —
+# areas live in the registry, not in /core/api/states.
+_AREA_TEMPLATE = (
+    "[{% for s in states %}"
+    '{{ {"e": s.entity_id, "a": area_name(s.entity_id)} | tojson }}'
+    '{{ "," if not loop.last }}'
+    "{% endfor %}]"
+)
+
+
+async def _fetch_areas(session: aiohttp.ClientSession) -> dict:
+    """Map entity_id -> area name (best-effort; empty dict on any failure)."""
+    try:
+        async with session.post(
+            f"{HA_API}/template", headers=_HEADERS, json={"template": _AREA_TEMPLATE}
+        ) as r:
+            if r.status != 200:
+                log.warning("area lookup failed (HTTP %s); continuing without areas", r.status)
+                return {}
+            pairs = json.loads(await r.text())
+    except Exception as e:  # noqa: BLE001 — areas are optional, never fatal
+        log.warning("area lookup error (%s); continuing without areas", e)
+        return {}
+    return {p["e"]: p["a"] for p in pairs if isinstance(p, dict) and p.get("a")}
+
+
 async def _fetch_states(session: aiohttp.ClientSession) -> list[dict]:
-    """All HA entities as {entity_id, name, domain, state}."""
+    """All HA entities as {entity_id, name, domain, area, state}."""
     async with session.get(f"{HA_API}/states", headers=_HEADERS) as r:
         r.raise_for_status()
         states = await r.json()
+    areas = await _fetch_areas(session)
     out = []
     for st in states:
         entity_id = st.get("entity_id", "")
@@ -48,6 +76,7 @@ async def _fetch_states(session: aiohttp.ClientSession) -> list[dict]:
             "entity_id": entity_id,
             "name": attrs.get("friendly_name", entity_id),
             "domain": entity_id.split(".")[0] if "." in entity_id else "",
+            "area": areas.get(entity_id, ""),
             "state": st.get("state", ""),
         })
     out.sort(key=lambda e: e["entity_id"])
@@ -181,6 +210,13 @@ INDEX_HTML = """<!doctype html>
   td.actions { width: 1%; white-space: nowrap; text-align: right; }
   .nm { font-size: .95rem; }
   .eid { font-family: ui-monospace, monospace; font-size: .8rem; opacity: .65; }
+  .area {
+    display: inline-block; font-size: .72rem; line-height: 1.5;
+    padding: 0 8px; border-radius: 999px; margin-left: 6px; vertical-align: middle;
+    background: color-mix(in srgb, CanvasText 12%, transparent);
+    opacity: .85;
+  }
+  .area.none { opacity: .45; font-style: italic; }
   .del {
     border: 0; background: transparent; cursor: pointer; font-size: 1.1rem; line-height: 1;
     padding: 4px 8px; border-radius: 6px; color: #f44336;
@@ -229,7 +265,15 @@ INDEX_HTML = """<!doctype html>
 
 <script>
 const $ = (s) => document.querySelector(s);
-let ALL = [];               // [{entity_id, name, domain}]
+
+function areaChip(area) {
+  const a = document.createElement("span");
+  a.className = "area";
+  a.textContent = area;
+  return a;
+}
+
+let ALL = [];               // [{entity_id, name, domain, area}]
 const BYID = new Map();     // entity_id -> entity
 let SELECTED = [];          // ordered list of entity_id
 let activeIdx = -1;         // highlighted suggestion
@@ -256,7 +300,7 @@ function candidates() {
   const q = $("#picker").value.trim().toLowerCase();
   const sel = new Set(SELECTED);
   let list = ALL.filter((e) => !sel.has(e.entity_id));
-  if (q) list = list.filter((e) => (e.entity_id + " " + e.name + " " + e.domain).toLowerCase().includes(q));
+  if (q) list = list.filter((e) => (e.entity_id + " " + e.name + " " + e.domain + " " + (e.area || "")).toLowerCase().includes(q));
   return list.slice(0, 50);
 }
 
@@ -278,6 +322,7 @@ function renderSuggestions() {
       li.dataset.id = e.entity_id;
       const nm = document.createElement("span");
       nm.className = "nm"; nm.textContent = e.name;
+      if (e.area) nm.append(" ", areaChip(e.area));
       const eid = document.createElement("span");
       eid.className = "eid"; eid.textContent = e.entity_id;
       li.append(nm, eid);
@@ -322,7 +367,7 @@ function renderTable() {
   const rows = SELECTED.filter((id) => {
     if (!q) return true;
     const e = BYID.get(id);
-    const hay = (id + " " + (e ? e.name : "")).toLowerCase();
+    const hay = (id + " " + (e ? e.name + " " + (e.area || "") : "")).toLowerCase();
     return hay.includes(q);
   });
 
@@ -342,6 +387,7 @@ function renderTable() {
     const tdName = document.createElement("td");
     const nm = document.createElement("div");
     nm.className = "nm"; nm.textContent = e.name;
+    if (e.area) nm.append(" ", areaChip(e.area));
     const eid = document.createElement("div");
     eid.className = "eid"; eid.textContent = id;
     if (!BYID.has(id)) { eid.textContent = id + "  (not currently in Home Assistant)"; }
