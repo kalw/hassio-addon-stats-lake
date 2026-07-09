@@ -5,9 +5,8 @@ Runs as a *separate* add-on service from the sampler daemon (ha_stats.py).
 It only edits configuration; it never samples or exports. Selections are
 persisted back into the add-on's own options via the Supervisor API
 (POST /addons/self/options), so they show up in the normal Configuration
-tab and are read by the daemon on its next start — exactly like editing
-the config by hand. The daemon/CLI behaviour is unchanged whether or not
-this UI is ever opened.
+tab and are read by the daemon on its next start. The daemon/CLI behaviour
+is unchanged whether or not this UI is ever opened.
 
 Requires in config.yaml:
   homeassistant_api: true   # GET /core/api/states
@@ -27,6 +26,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 SUPERVISOR = "http://supervisor"
 HA_API = f"{SUPERVISOR}/core/api"
 ADDON_API = f"{SUPERVISOR}/addons/self"
+# 8099 is Home Assistant's default ingress port (config.yaml omits it).
 INGRESS_PORT = int(os.environ.get("HA_STATS_UI_PORT", "8099"))
 
 _TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
@@ -137,40 +137,63 @@ INDEX_HTML = """<!doctype html>
   * { box-sizing: border-box; }
   body {
     font-family: system-ui, -apple-system, Roboto, sans-serif;
-    margin: 0; padding: 16px; line-height: 1.4;
+    margin: 0; padding: 16px; line-height: 1.4; max-width: 820px;
   }
-  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-  h1 { font-size: 1.25rem; margin: 0 0 4px; }
+  h1 { font-size: 1.25rem; margin: 0 0 2px; }
   .muted { opacity: .65; font-size: .85rem; }
-  .toolbar {
-    position: sticky; top: 0; padding: 12px 0; margin-bottom: 8px;
-    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
-    background: Canvas;
+  .card {
+    border: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+    border-radius: 12px; padding: 14px; margin-top: 14px;
   }
-  input[type=search] {
-    flex: 1 1 220px; min-width: 160px; padding: 8px 10px;
+  label.field { display: block; font-size: .8rem; font-weight: 600; opacity: .8; margin-bottom: 6px; }
+  input[type=text], input[type=search] {
+    width: 100%; padding: 9px 11px; font-size: .95rem;
     border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
-    border-radius: 8px; background: Canvas; color: CanvasText; font-size: .95rem;
+    border-radius: 8px; background: Canvas; color: CanvasText;
   }
-  button {
-    padding: 8px 14px; border-radius: 8px; border: 0; cursor: pointer;
-    font-size: .9rem; font-weight: 600;
-  }
-  .primary { background: #03a9f4; color: #fff; }
-  .ghost {
-    background: transparent; color: CanvasText;
+  input:focus { outline: 2px solid #03a9f4; outline-offset: -1px; }
+
+  /* type-ahead picker */
+  .picker { position: relative; }
+  .suggestions {
+    position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 4px);
+    margin: 0; padding: 4px; list-style: none; max-height: 300px; overflow-y: auto;
+    background: Canvas; color: CanvasText;
     border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+    border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.25);
   }
-  button:disabled { opacity: .5; cursor: default; }
-  ul { list-style: none; margin: 0; padding: 0; }
-  li {
-    display: flex; align-items: center; gap: 10px; padding: 8px 6px;
-    border-bottom: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+  .suggestions[hidden] { display: none; }
+  .suggestions li {
+    padding: 7px 9px; border-radius: 6px; cursor: pointer;
+    display: flex; flex-direction: column;
   }
-  li.hidden { display: none; }
-  label { flex: 1; display: flex; flex-direction: column; cursor: pointer; }
-  .eid { font-family: ui-monospace, monospace; font-size: .82rem; opacity: .7; }
+  .suggestions li.active, .suggestions li:hover {
+    background: color-mix(in srgb, #03a9f4 18%, transparent);
+  }
+  .suggestions .empty { cursor: default; opacity: .6; }
+
+  /* configured table */
+  .row-between { display: flex; align-items: center; gap: 10px; justify-content: space-between; flex-wrap: wrap; margin-bottom: 10px; }
+  .row-between .grow { flex: 1 1 200px; }
+  table { width: 100%; border-collapse: collapse; }
+  tbody tr { border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent); }
+  td { padding: 8px 4px; vertical-align: middle; }
+  td.actions { width: 1%; white-space: nowrap; text-align: right; }
   .nm { font-size: .95rem; }
+  .eid { font-family: ui-monospace, monospace; font-size: .8rem; opacity: .65; }
+  .del {
+    border: 0; background: transparent; cursor: pointer; font-size: 1.1rem; line-height: 1;
+    padding: 4px 8px; border-radius: 6px; color: #f44336;
+  }
+  .del:hover { background: color-mix(in srgb, #f44336 15%, transparent); }
+  .empty-row td { padding: 16px 4px; opacity: .6; }
+
+  /* actions */
+  .bar { display: flex; gap: 8px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+  button.act { padding: 9px 15px; border-radius: 8px; border: 0; cursor: pointer; font-size: .9rem; font-weight: 600; }
+  .primary { background: #03a9f4; color: #fff; }
+  .ghost { background: transparent; color: CanvasText; border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); }
+  button:disabled { opacity: .5; cursor: default; }
   .status { font-size: .85rem; min-height: 1.2em; }
   .status.ok { color: #4caf50; }
   .status.err { color: #f44336; }
@@ -178,86 +201,183 @@ INDEX_HTML = """<!doctype html>
 </style>
 </head>
 <body>
-<header>
-  <div>
-    <h1>Tracked entities</h1>
-    <div class="muted">Pick the entities Stats Lake should sample. Saved to the add-on configuration.</div>
-  </div>
-</header>
+<h1>Tracked entities</h1>
+<div class="muted">Pick the entities Stats Lake should sample. Saved to the add-on configuration.</div>
 
-<div class="toolbar">
-  <input id="search" type="search" placeholder="Filter by name, entity id or domain…" autocomplete="off" />
-  <span class="muted count"><span id="selCount">0</span> selected</span>
-  <button id="save" class="primary" disabled>Save</button>
-  <button id="saveRestart" class="ghost" disabled>Save &amp; restart</button>
+<div class="card picker">
+  <label class="field" for="picker">Add an entity</label>
+  <input id="picker" type="text" placeholder="Search by name, entity id or domain…" autocomplete="off"
+         role="combobox" aria-expanded="false" aria-controls="suggestions" />
+  <ul id="suggestions" class="suggestions" role="listbox" hidden></ul>
 </div>
-<div id="status" class="status"></div>
 
-<ul id="list"><li class="muted">Loading entities…</li></ul>
+<div class="card">
+  <div class="row-between">
+    <strong>Configured <span class="count">(<span id="selCount">0</span>)</span></strong>
+    <input id="filter" class="grow" type="search" placeholder="Filter configured entities…" />
+  </div>
+  <table>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<div class="bar">
+  <button id="save" class="act primary">Save</button>
+  <button id="saveRestart" class="act ghost">Save &amp; restart</button>
+  <span id="status" class="status"></span>
+</div>
 
 <script>
 const $ = (s) => document.querySelector(s);
-let ENTITIES = [];
-let SELECTED = new Set();
+let ALL = [];               // [{entity_id, name, domain}]
+const BYID = new Map();     // entity_id -> entity
+let SELECTED = [];          // ordered list of entity_id
+let activeIdx = -1;         // highlighted suggestion
 
-function render() {
-  const list = $("#list");
-  list.innerHTML = "";
-  for (const e of ENTITIES) {
-    const li = document.createElement("li");
-    li.dataset.hay = (e.entity_id + " " + e.name + " " + e.domain).toLowerCase();
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.checked = SELECTED.has(e.entity_id);
-    cb.addEventListener("change", () => {
-      cb.checked ? SELECTED.add(e.entity_id) : SELECTED.delete(e.entity_id);
-      updateCount();
-    });
-    const label = document.createElement("label");
-    const nm = document.createElement("span");
-    nm.className = "nm"; nm.textContent = e.name;
-    const eid = document.createElement("span");
-    eid.className = "eid"; eid.textContent = e.entity_id;
-    label.append(nm, eid);
-    li.append(cb, label);
-    list.append(li);
-  }
-  applyFilter();
-  updateCount();
-}
-
-function applyFilter() {
-  const q = $("#search").value.trim().toLowerCase();
-  for (const li of $("#list").children) {
-    li.classList.toggle("hidden", q && !li.dataset.hay.includes(q));
-  }
-}
-
-function updateCount() {
-  $("#selCount").textContent = SELECTED.size;
-  $("#save").disabled = false;
-  $("#saveRestart").disabled = false;
-}
-
-function setStatus(msg, kind) {
-  const el = $("#status");
-  el.textContent = msg;
-  el.className = "status" + (kind ? " " + kind : "");
-}
-
+// ── data load ────────────────────────────────────────────────────────────
 async function load() {
   try {
     const r = await fetch("api/entities");
     if (!r.ok) throw new Error(await r.text());
     const data = await r.json();
-    ENTITIES = data.entities;
-    SELECTED = new Set(data.selected || []);
-    render();
+    ALL = data.entities;
+    BYID.clear();
+    for (const e of ALL) BYID.set(e.entity_id, e);
+    SELECTED = (data.selected || []).slice();
     setStatus("");
+    renderTable();
   } catch (err) {
     setStatus("Failed to load entities: " + err.message, "err");
-    $("#list").innerHTML = "";
   }
+}
+
+// ── type-ahead picker ────────────────────────────────────────────────────
+function candidates() {
+  const q = $("#picker").value.trim().toLowerCase();
+  const sel = new Set(SELECTED);
+  let list = ALL.filter((e) => !sel.has(e.entity_id));
+  if (q) list = list.filter((e) => (e.entity_id + " " + e.name + " " + e.domain).toLowerCase().includes(q));
+  return list.slice(0, 50);
+}
+
+function renderSuggestions() {
+  const box = $("#picker");
+  const ul = $("#suggestions");
+  const items = candidates();
+  activeIdx = -1;
+  ul.innerHTML = "";
+  if (!items.length) {
+    const li = document.createElement("li");
+    li.className = "empty";
+    li.textContent = "No matching entities";
+    ul.append(li);
+  } else {
+    items.forEach((e, i) => {
+      const li = document.createElement("li");
+      li.setAttribute("role", "option");
+      li.dataset.id = e.entity_id;
+      const nm = document.createElement("span");
+      nm.className = "nm"; nm.textContent = e.name;
+      const eid = document.createElement("span");
+      eid.className = "eid"; eid.textContent = e.entity_id;
+      li.append(nm, eid);
+      li.addEventListener("mousedown", (ev) => { ev.preventDefault(); addEntity(e.entity_id); });
+      ul.append(li);
+    });
+  }
+  ul.hidden = false;
+  box.setAttribute("aria-expanded", "true");
+}
+
+function hideSuggestions() {
+  $("#suggestions").hidden = true;
+  $("#picker").setAttribute("aria-expanded", "false");
+  activeIdx = -1;
+}
+
+function moveActive(delta) {
+  const opts = [...$("#suggestions").querySelectorAll("li[data-id]")];
+  if (!opts.length) return;
+  activeIdx = (activeIdx + delta + opts.length) % opts.length;
+  opts.forEach((li, i) => li.classList.toggle("active", i === activeIdx));
+  opts[activeIdx].scrollIntoView({ block: "nearest" });
+}
+
+function addEntity(id) {
+  if (!SELECTED.includes(id)) SELECTED.push(id);
+  $("#picker").value = "";
+  hideSuggestions();
+  renderTable();
+  setStatus("");
+  $("#picker").focus();
+}
+
+// ── configured table ─────────────────────────────────────────────────────
+function renderTable() {
+  const q = $("#filter").value.trim().toLowerCase();
+  const tbody = $("#tbody");
+  tbody.innerHTML = "";
+  $("#selCount").textContent = SELECTED.length;
+
+  const rows = SELECTED.filter((id) => {
+    if (!q) return true;
+    const e = BYID.get(id);
+    const hay = (id + " " + (e ? e.name : "")).toLowerCase();
+    return hay.includes(q);
+  });
+
+  if (!SELECTED.length) {
+    addEmptyRow("No entities configured yet — search above to add one.");
+    return;
+  }
+  if (!rows.length) {
+    addEmptyRow("No configured entities match “" + $("#filter").value + "”.");
+    return;
+  }
+
+  for (const id of rows) {
+    const e = BYID.get(id) || { entity_id: id, name: id };
+    const tr = document.createElement("tr");
+
+    const tdName = document.createElement("td");
+    const nm = document.createElement("div");
+    nm.className = "nm"; nm.textContent = e.name;
+    const eid = document.createElement("div");
+    eid.className = "eid"; eid.textContent = id;
+    if (!BYID.has(id)) { eid.textContent = id + "  (not currently in Home Assistant)"; }
+    tdName.append(nm, eid);
+
+    const tdAct = document.createElement("td");
+    tdAct.className = "actions";
+    const del = document.createElement("button");
+    del.className = "del"; del.title = "Remove"; del.setAttribute("aria-label", "Remove " + id);
+    del.textContent = "✕";
+    del.addEventListener("click", () => {
+      SELECTED = SELECTED.filter((x) => x !== id);
+      renderTable();
+      setStatus("");
+    });
+    tdAct.append(del);
+
+    tr.append(tdName, tdAct);
+    tbody.append(tr);
+  }
+}
+
+function addEmptyRow(msg) {
+  const tr = document.createElement("tr");
+  tr.className = "empty-row";
+  const td = document.createElement("td");
+  td.colSpan = 2; td.textContent = msg;
+  tr.append(td);
+  $("#tbody").append(tr);
+}
+
+// ── save ─────────────────────────────────────────────────────────────────
+function setStatus(msg, kind) {
+  const el = $("#status");
+  el.textContent = msg;
+  el.className = "status" + (kind ? " " + kind : "");
 }
 
 async function save(restart) {
@@ -268,23 +388,39 @@ async function save(restart) {
     const r = await fetch("api/selected", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tracked_entities: [...SELECTED] }),
+      body: JSON.stringify({ tracked_entities: SELECTED }),
     });
     if (!r.ok) throw new Error(await r.text());
     if (restart) {
       setStatus("Saved. Restarting add-on…", "ok");
       await fetch("api/restart", { method: "POST" }).catch(() => {});
     } else {
-      setStatus("Saved " + SELECTED.size + " entities. Restart the add-on to apply.", "ok");
+      setStatus("Saved " + SELECTED.length + " entities. Restart the add-on to apply.", "ok");
     }
   } catch (err) {
     setStatus("Save failed: " + err.message, "err");
   } finally {
-    updateCount();
+    $("#save").disabled = false;
+    $("#saveRestart").disabled = false;
   }
 }
 
-$("#search").addEventListener("input", applyFilter);
+// ── wiring ───────────────────────────────────────────────────────────────
+$("#picker").addEventListener("input", renderSuggestions);
+$("#picker").addEventListener("focus", renderSuggestions);
+$("#picker").addEventListener("blur", () => setTimeout(hideSuggestions, 120));
+$("#picker").addEventListener("keydown", (ev) => {
+  if (ev.key === "ArrowDown") { ev.preventDefault(); moveActive(1); }
+  else if (ev.key === "ArrowUp") { ev.preventDefault(); moveActive(-1); }
+  else if (ev.key === "Escape") { hideSuggestions(); }
+  else if (ev.key === "Enter") {
+    ev.preventDefault();
+    const opts = [...$("#suggestions").querySelectorAll("li[data-id]")];
+    const pick = activeIdx >= 0 ? opts[activeIdx] : opts[0];
+    if (pick) addEntity(pick.dataset.id);
+  }
+});
+$("#filter").addEventListener("input", renderTable);
 $("#save").addEventListener("click", () => save(false));
 $("#saveRestart").addEventListener("click", () => save(true));
 load();

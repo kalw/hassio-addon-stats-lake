@@ -30,7 +30,9 @@ You can pick the tracked entities two ways — both write to the same
 ### Option A — the entity picker (ingress UI)
 
 1. Open the add-on and click **Open Web UI** (or the **Stats Lake** sidebar panel).
-2. Search and tick the entities you want to sample.
+2. In the **Add an entity** box, type to search Home Assistant and click a
+   match to add it. Added entities appear in the **Configured** table below,
+   each with a remove (✕) button; use the filter box to search that list.
 3. Click **Save** (persists to the Configuration tab) or **Save & restart**
    to apply immediately.
 
