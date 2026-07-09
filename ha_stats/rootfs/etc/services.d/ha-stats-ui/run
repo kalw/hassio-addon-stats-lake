@@ -1,0 +1,9 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Start the HA Stats Lake ingress UI (entity picker)
+#
+# Runs independently of the sampler daemon. It only edits the add-on's
+# options; it never samples or exports.
+# ==============================================================================
+bashio::log.info "Starting HA Stats Lake UI..."
+exec python3 /app/ha_stats_ui.py

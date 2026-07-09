@@ -12,8 +12,9 @@ RUN pip3 install --no-cache-dir --requirement /tmp/requirements.txt \
     && apk del build-base cmake
 
 COPY ha_stats.py /app/ha_stats.py
+COPY ha_stats_ui.py /app/ha_stats_ui.py
 COPY rootfs /
-RUN chmod a+x /etc/services.d/ha-stats/run
+RUN chmod a+x /etc/services.d/ha-stats/run /etc/services.d/ha-stats-ui/run
 
 ARG BUILD_ARCH
 ARG BUILD_DATE

@@ -23,6 +23,21 @@ Your laptop (on demand)
 
 ## Configure tracked entities
 
+You can pick the tracked entities two ways — both write to the same
+`tracked_entities` option, so use whichever you prefer.
+
+### Option A — the entity picker (ingress UI)
+
+1. Open the add-on and click **Open Web UI** (or the **Stats Lake** sidebar panel).
+2. Search and tick the entities you want to sample.
+3. Click **Save** (persists to the Configuration tab) or **Save & restart**
+   to apply immediately.
+
+The picker only reads the entity list and writes your selection back into the
+add-on's own configuration; it never displays or transmits your S3 credentials.
+
+### Option B — the Configuration tab
+
 1. Open the add-on **Configuration** tab in HA.
 2. Under `tracked_entities`, add the entity IDs you want recorded, e.g.:
    ```yaml
@@ -34,8 +49,8 @@ Your laptop (on demand)
    ```
 3. Click **Save** and restart the add-on.
 
-To add or remove a tracked entity later, edit the list in the Configuration tab
-and restart the add-on.
+Either way, the sampler reads `tracked_entities` at start-up, so **restart the
+add-on** after changing the selection for it to take effect.
 
 ### How type/unit/label are determined
 
